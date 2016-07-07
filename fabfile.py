@@ -12,7 +12,7 @@ env.hosts = ['static02b.wowhead.com']
 REMOTE_ROOT = '/data01/www/static/modelviewer'
 AKAMAI_ROOT = 'http://wow.zamimg.com/modelviewer'
 MAX_THREADS = 1 # 8
-RETRY_DELAY_IN_MS = 30000
+RETRY_DELAY_IN_S = 30
 
 def where_validate(where):
     where = os.path.expanduser(where)
@@ -67,7 +67,7 @@ def akamai_purge(where, user=None, passwd=None):
     if user is None and passwd is None:
         user, passwd = get_akamai_creds()
 
-    MAX_CONTENT_SIZE = 1000 # 45000
+    MAX_CONTENT_SIZE = 45000
     where = where_validate(where)
     bins = []
     with lcd(where):
@@ -84,17 +84,15 @@ def akamai_purge(where, user=None, passwd=None):
             current_bin.append(full_f)
             current_size += len(full_f)
 
-    invalidate(([bins[0][0]], user, passwd))
-        
-    # pool = dummy.Pool(MAX_THREADS)
-    # results = pool.map(invalidate, [(b, user, passwd) for b in bins])
-    # pool.close()
-    # pool.join()
+    pool = dummy.Pool(MAX_THREADS)
+    results = pool.map(invalidate, [(b, user, passwd) for b in bins])
+    pool.close()
+    pool.join()
 
-    # nSuccesses = len([x for x in results if x == True])
-    # nFails = len([x for x in results if x == False])
-    # print("\n---------\nAkamai cache invalidation submission summary:\n\t{s} successful chunks, {f} unsuccessful chunks.\n".format(
-    #     s=nSuccesses, f=nFails))
+    nSuccesses = len([x for x in results if x == True])
+    nFails = len([x for x in results if x == False])
+    print("\n---------\nAkamai cache invalidation submission summary:\n\t{s} successful chunks, {f} unsuccessful chunks.\n".format(
+        s=nSuccesses, f=nFails))
 
 
 def invalidate(args):
@@ -105,9 +103,12 @@ def invalidate(args):
     while True:
         r = requests.post(endpoint, auth=(user, passwd), json={'objects': urls, 'action': 'invalidate'})
         if r.status_code == 507:
-            sys.stderr.write("[INFO] Akamai purge request pool is full; waiting...")
+            r2 = requests.get('https://api.ccu.akamai.com/ccu/v2/queues/default', auth=(user, passwd))
+            backlog = r2.json()['queueLength']
+            sys.stderr.write("[INFO] Akamai purge request pool is full ({n} items/max 10000); waiting...\n".format(
+                n=backlog))
             sys.stderr.flush()
-            time.sleep(RETRY_DELAY_IN_MS)
+            time.sleep(RETRY_DELAY_IN_S)
             continue
         elif r.status_code == 401:
             sys.stderr.write("Request denied - unauthorized.")
@@ -115,13 +116,13 @@ def invalidate(args):
             break
         elif r.status_code == 415:
             sys.stderr.write("Something(s) in the following chunk is/are not a valid purgeable? \
-(WARN: The invalidation of this chunk failed - forging ahead.)\n{c}".format(c='\n'.join(urls)))
+(WARN: The invalidation of this chunk failed - forging ahead.)\n{c}\n".format(c='\n'.join(urls)))
             sys.stderr.flush()
             break
         elif r.status_code == 201:
             when = r.json()['pingAfterSeconds']
-            where = r.json()['progressUri']
-            sys.stdout.write("[INFO] Chunk accepted; you may check this URL for status {e}:\n\t{u}".format(
+            where = "https://api.ccu.akamai.com{s}".format(s=r.json()['progressUri'])
+            sys.stdout.write("[INFO] Chunk accepted; you may check this URL for status {e}:\n\t{u}\n".format(
                 e="in ~{t} seconds".format(t=when), u=where))
             sys.stdout.flush()
             return True
@@ -173,4 +174,4 @@ def do_all(where):
     do_meta(where)
     do_mo3(where)
     do_textures(where)
-    akamai_purge(where, user=None, passwd=None)
+    akamai_purge(where, user=user, passwd=passwd)
