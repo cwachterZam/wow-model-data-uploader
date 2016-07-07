@@ -4,12 +4,16 @@
 You will need:
 
 python (2.7.x)
+
 requests (pip install requests...)
+
 fabric (pip install fabric...)
 
 Akamai credentials
+
 VPN (i.e., wowhead server) access
-(sudoers) permissions to change file permissions on that server 
+
+(sudoers) permissions to change file permissions on that server
 
 
 ## Usage
@@ -20,10 +24,10 @@ The tasks are run in the usual (fabfile) way. You will typically have to pass in
 The basic thing to know is the usage of the 'do_all' task which does everything:
 
 ```
+
 FABFILE=/path/to/this/projects/fabfile.py
 EXTRACTION_HOME=/wherever/your/model/extractor/dumped/stuff
 
 fab -f $FABFILE do_all:where=$EXTRACTION_HOME
-
 
 ```
